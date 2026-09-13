@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Virtual Bus Ride</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif;background:#080808;color:#fff;overflow:hidden}
+#app{position:relative;width:100%;height:100%;background:#111}
+video#bg{z-index:1;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.overlay{z-index:2;position:absolute;inset:0;pointer-events:none;background:linear-gradient(to bottom,rgba(0,0,0,.28),transparent 30%,rgba(0,0,0,.58))}
+.center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:3}
+.card{width:min(760px,92%);padding:34px;border:1px solid rgba(255,255,255,.18);border-radius:28px;background:rgba(10,10,10,.62);backdrop-filter:blur(16px);text-align:center;box-shadow:0 20px 80px #000}
+h1{font-size:clamp(30px,6vw,64px);margin:0 0 8px}.sub{opacity:.75;margin-bottom:28px}
+.modes{display:flex;gap:18px;justify-content:center;flex-wrap:wrap}
+button{border:0;color:#fff;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);padding:14px 22px;border-radius:16px;font-size:16px;cursor:pointer;transition:.2s}
+button:hover{transform:translateY(-2px);background:rgba(255,255,255,.2)}
+.mode{min-width:210px;padding:22px}.mode b{display:block;font-size:21px;margin-bottom:5px}.mode span{font-size:13px;opacity:.7}
+.player-frame{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(100vw,177.78vh);height:min(56.25vw,100vh);background:#000;z-index:0;box-shadow:0 0 60px rgba(0,0,0,.5)}
+.hidden{display:none !important}
+.top{position:absolute;z-index:4;top:18px;left:18px;right:18px;display:flex;justify-content:space-between;align-items:center}
+.badge{padding:10px 14px;border-radius:999px;background:rgba(0,0,0,.45);backdrop-filter:blur(10px);font-size:14px}
+.controls{position:absolute;z-index:5;left:50%;bottom:18px;transform:translateX(-50%);width:min(1050px,94%);padding:15px 17px;border-radius:18px;background:rgba(8,8,8,.72);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.15)}
+.row{display:flex;align-items:center;gap:10px}.grow{flex:1}
+.small{font-size:12px;opacity:.7;min-width:40px;text-align:center}
+.progress{width:100%;accent-color:#fff;cursor:pointer}
+.song{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45vw}
+.icon{padding:10px 13px;border-radius:12px}.play{font-size:20px}
+.playlist{position:absolute;z-index:6;right:18px;bottom:108px;width:min(360px,90%);max-height:55vh;overflow:auto;padding:14px;border-radius:20px;background:rgba(10,10,10,.9);backdrop-filter:blur(18px);border:1px solid rgba(255,255,255,.16)}
+.playlist-header{display:flex;justify-content:space-between;align-items:center;padding:0 4px 10px 4px;font-weight:bold;border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:8px}
+.playlist-close{padding:4px 10px;border-radius:8px;font-size:14px}
+.track{width:100%;display:flex;justify-content:space-between;text-align:left;margin:4px 0;padding:12px;border-radius:12px;background:transparent}
+.track.active{background:rgba(255,255,255,.16)}
+.track span:last-child{opacity:.55;font-size:12px}
+@media(max-width:800px){
+  .controls{bottom:8px;width:96%;padding:11px 12px}
+  .row.toprow{flex-wrap:wrap}
+  .song{max-width:48vw}
+  .playlist{right:3%;bottom:115px;width:94%}
+  .top{top:10px;left:10px;right:10px}
+}
+@media(orientation:landscape) and (max-height:600px){
+  .controls{bottom:7px;padding:8px 11px}
+  .controls .row:last-child{display:none}
+  .playlist{bottom:92px;max-height:65vh}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="player-frame" aria-hidden="true"></div>
+  <video id="bg" loop muted playsinline preload="auto"></video>
+  <div class="overlay"></div>
+
+  <div id="welcome" class="center">
+    <div class="card">
+      <h1>🚌 Virtual Bus Ride</h1>
+      <div class="sub">Choose your seat and enjoy the journey.</div>
+      <div class="modes">
+        <button class="mode" onclick="startRide('driver')">
+          <b>👨‍✈️ DRIVER</b><span>Front road / driving view</span>
+        </button>
+        <button class="mode" onclick="startRide('passenger')">
+          <b>💺 PASSENGER</b><span>Window / passenger view</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ride" class="hidden">
+    <div class="top">
+      <div class="badge" id="modeBadge">💺 Passenger</div>
+      <button onclick="changeSeat()">Change Seat</button>
+    </div>
+
+    <div id="playlist" class="playlist hidden"></div>
+
+    <div class="controls">
+      <div class="row toprow">
+        <div class="song" id="songName">No song selected</div>
+        <div class="grow"></div>
+        <button class="icon" onclick="prevSong()">⏮</button>
+        <button class="icon play" id="playBtn" onclick="togglePlay()">▶</button>
+        <button class="icon" onclick="nextSong()">⏭</button>
+        <button class="icon" onclick="togglePlaylist()">☰</button>
+      </div>
+      <div class="row">
+        <span class="small" id="current">0:00</span>
+        <input class="progress grow" id="seek" type="range" min="0" max="100" value="0" step=".1">
+        <span class="small" id="duration">0:00</span>
+      </div>
+      <div class="row">
+        <span class="small">🔊</span>
+        <input id="volume" class="grow" type="range" min="0" max="1" value=".8" step=".01">
+      </div>
+    </div>
+  </div>
+
+  <audio id="audio"></audio>
+</div>
+
+<script>
+/* =========================================================
+   EDIT ONLY THIS SECTION
+   1. Replace driverVideo/passengerVideo with your video files.
+   2. Add your songs to the songs array.
+   ========================================================= */
+const CONFIG = {
+  driverVideo: "driver.mp4",
+  passengerVideo: "passenger.mp4",
+
+  songs: [
+    {title:"Song 1", file:"song1.mp3"},
+    {title:"Song 2", file:"song 2.mp3"},
+    {title:"Song 3", file:"song3.mp3"},
+    {title:"Song 4", file:"song4.mp3"},
+    {title:"Song 5", file:"song5.mp3"},
+    {title:"Song 6", file:"song6.mp3"},
+    {title:"Song 7", file:"song7.mp3"},
+    {title:"Song 8", file:"song8.mp3"},
+    {title:"Song 9", file:"song9.mp3"},
+    {title:"Song 0", file:"song0.mp3"}
+  ]
+};
+/* ========================================================= */
+
+const bg=document.getElementById("bg"), audio=document.getElementById("audio");
+const welcome=document.getElementById("welcome"), ride=document.getElementById("ride");
+const songName=document.getElementById("songName"), playBtn=document.getElementById("playBtn");
+const seek=document.getElementById("seek"), volume=document.getElementById("volume");
+const current=document.getElementById("current"), duration=document.getElementById("duration");
+const playlist=document.getElementById("playlist"), modeBadge=document.getElementById("modeBadge");
+let mode="", index=0;
+
+function startRide(m){
+  mode=m; welcome.classList.add("hidden"); ride.classList.remove("hidden");
+  modeBadge.textContent=m==="driver"?"👨‍✈️ Driver":"💺 Passenger";
+  bg.src=m==="driver"?CONFIG.driverVideo:CONFIG.passengerVideo;
+  bg.play().catch(()=>{});
+  renderPlaylist(); loadSong(0);
+}
+function changeSeat(){
+  ride.classList.add("hidden"); welcome.classList.remove("hidden"); playlist.classList.add("hidden");
+  bg.pause(); bg.removeAttribute("src"); bg.load();
+}
+function loadSong(i,autoplay=true){
+  if(!CONFIG.songs.length)return;
+  index=(i+CONFIG.songs.length)%CONFIG.songs.length;
+  const s=CONFIG.songs[index]; audio.src=s.file; songName.textContent="🎵 "+s.title;
+  renderPlaylist();
+  if(autoplay) audio.play().then(()=>playBtn.textContent="⏸").catch(()=>playBtn.textContent="▶");
+}
+function togglePlay(){
+  if(audio.paused){audio.play().then(()=>playBtn.textContent="⏸").catch(()=>{});}
+  else{audio.pause();playBtn.textContent="▶";}
+}
+function nextSong(){loadSong(index+1)}
+function prevSong(){loadSong(index-1)}
+function togglePlaylist(){playlist.classList.toggle("hidden")}
+function renderPlaylist(){
+  playlist.innerHTML=`<div class="playlist-header"><span>Playlist</span><button class="playlist-close" onclick="togglePlaylist()">✕</button></div>`;
+  CONFIG.songs.forEach((s,i)=>{
+    const b=document.createElement("button"); b.className="track"+(i===index?" active":"");
+    b.innerHTML=`<span>${i+1}. ${escapeHtml(s.title)}</span><span>PLAY</span>`;
+    b.onclick=()=>loadSong(i); playlist.appendChild(b);
+  });
+}
+function escapeHtml(x){return String(x).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
+function fmt(t){if(!isFinite(t))return"0:00";return Math.floor(t/60)+":"+String(Math.floor(t%60)).padStart(2,"0")}
+audio.addEventListener("loadedmetadata",()=>{duration.textContent=fmt(audio.duration)});
+audio.addEventListener("timeupdate",()=>{
+  current.textContent=fmt(audio.currentTime);
+  seek.value=audio.duration?(audio.currentTime/audio.duration)*100:0;
+});
+audio.addEventListener("ended",()=>nextSong());
+seek.addEventListener("input",()=>{if(audio.duration)audio.currentTime=(seek.value/100)*audio.duration});
+volume.addEventListener("input",()=>audio.volume=volume.value);
+audio.volume=.8;
+</script>
+</body>
+</html>
